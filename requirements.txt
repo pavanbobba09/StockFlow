@@ -1,0 +1,26 @@
+# Core framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# LangChain and agents
+langchain>=0.1.0
+langgraph>=0.0.26
+langchain-openai>=0.0.5
+
+# Database
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.23
+alembic>=1.13.0
+
+# Data science
+numpy>=1.26.0
+pandas>=2.2.0
+
+# Observability
+prometheus-client>=0.19.0
+
+# Development
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
