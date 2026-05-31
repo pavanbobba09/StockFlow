@@ -18,7 +18,7 @@ from data.db import SessionLocal
 from evals.backtest import (
     BacktestConfig, BacktestResult, DemandData,
     DeliverySchedule, ParLevels, ShelfLives,
-    run_backtest,
+    run_backtest, run_agent_backtest,
 )
 from forecasting.forecasters import MovingAverageForecaster, SeasonalNaiveForecaster
 
@@ -182,7 +182,7 @@ def main():
     n_pairs = len(demand_data)
     print(f"  {n_pairs} store-item pairs loaded.")
 
-    # Run both baseline forecasters for comparison
+    # Phase 2 baselines
     forecasters = [
         (MovingAverageForecaster, {"window": 14}),
         (SeasonalNaiveForecaster, {"k": 4}),
@@ -204,9 +204,18 @@ def main():
         print_scorecard(result)
         results.append(result)
 
-    if len(results) > 1:
-        compare_results(results)
+    # Phase 3: agent-equivalent policy (expiry-aware, variance-based par)
+    print("\nRunning backtest — ReplenishmentAgent policy ...")
+    agent_result = run_agent_backtest(
+        demand_data=demand_data,
+        delivery_schedules=delivery_schedules,
+        shelf_lives=shelf_lives,
+        config=config,
+    )
+    print_scorecard(agent_result)
+    results.append(agent_result)
 
+    compare_results(results)
     print("Backtest complete.")
 
 

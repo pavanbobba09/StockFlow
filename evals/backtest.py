@@ -119,6 +119,50 @@ def compute_order_qty(
 
 
 # ---------------------------------------------------------------------------
+# Agent-equivalent ordering logic (smarter than baseline)
+# ---------------------------------------------------------------------------
+
+def agent_compute_order_qty(
+    batches: List[Batch],
+    forecaster: BaseForecaster,
+    horizon: int,
+    shelf_life: int,
+    delivery_weekdays: set,
+    today: date,
+) -> int:
+    """
+    The ordering logic the replenishment agent implements.
+
+    Improvements over the baseline compute_order_qty:
+    1. Expiry-aware: only counts inventory that won't expire before next delivery.
+    2. Variance-based par: mean + 1.5σ × horizon (adapts to demand volatility).
+    3. Hard shelf-life cap: never order more than shelf_life days of forecast demand.
+    """
+    # Effective inventory: only batches surviving to next delivery
+    next_delivery = today + timedelta(days=horizon)
+    effective_inv = sum(q for q, exp in batches if exp >= next_delivery)
+
+    # Forecast demand to next delivery
+    preds = forecaster.predict(horizon)
+    forecast_total = sum(preds)
+
+    # Adaptive par: mean + 1.5σ of predictions as safety cushion
+    import numpy as np
+    pred_arr = np.array(preds)
+    adaptive_par = max(1, int((pred_arr.mean() + 1.5 * pred_arr.std()) * horizon))
+
+    # How much we need to order to cover forecast + safety
+    shortfall = adaptive_par - (effective_inv - forecast_total)
+    if shortfall <= 0:
+        return 0
+
+    # Hard cap: never order more than will sell in shelf_life days
+    sellable = forecaster.predict_total(min(shelf_life, 14))
+    order_qty = min(shortfall, max(0, sellable - effective_inv))
+    return max(0, int(round(order_qty)))
+
+
+# ---------------------------------------------------------------------------
 # Core engine
 # ---------------------------------------------------------------------------
 
@@ -251,5 +295,104 @@ def run_backtest(
         scorecard=accumulator.scorecard(),
         records=accumulator.records(),
         forecaster_name=forecaster_name,
+        config=config,
+    )
+
+
+def run_agent_backtest(
+    demand_data: DemandData,
+    delivery_schedules: DeliverySchedule,
+    shelf_lives: ShelfLives,
+    config: BacktestConfig | None = None,
+) -> BacktestResult:
+    """
+    Backtest using the agent's smarter ordering logic (expiry-aware,
+    variance-based safety stock). Uses SeasonalNaive forecaster.
+    No LLM calls — deterministic simulation of what the agent would decide.
+    """
+    from forecasting.forecasters import SeasonalNaiveForecaster
+
+    if config is None:
+        config = BacktestConfig()
+
+    accumulator = ScorecardAccumulator()
+
+    all_dates: set[date] = set()
+    for series in demand_data.values():
+        all_dates.update(d for d, _ in series)
+    sorted_dates = sorted(all_dates)
+
+    train_end_idx = len(sorted_dates) - config.test_days - 1
+    test_dates = sorted_dates[train_end_idx + 1:]
+
+    # Seed inventory and forecasters
+    forecasters: Dict[Tuple[int, int], BaseForecaster] = {}
+    inventory: Dict[Tuple[int, int], List[Batch]] = {}
+
+    for (store_id, item_id), series in demand_data.items():
+        shelf = shelf_lives.get(item_id, 7)
+        import numpy as np
+        qtys = [q for _, q in series[:config.train_days]]
+        mean = np.mean(qtys) if qtys else 30
+        std  = np.std(qtys) if qtys else 5
+        gap  = 7 // max(1, len(delivery_schedules.get(store_id, {0, 3})))
+        seed_par = max(1, int((mean + 1.5 * std) * gap))
+        seed_qty = int(seed_par * 0.7)
+        seed_expiry = sorted_dates[train_end_idx] + timedelta(days=shelf)
+        inventory[(store_id, item_id)] = [(seed_qty, seed_expiry)]
+        forecasters[(store_id, item_id)] = SeasonalNaiveForecaster(k=4)
+
+    demand_lookup: Dict[Tuple[int, int], Dict[date, int]] = {
+        key: {d: q for d, q in series}
+        for key, series in demand_data.items()
+    }
+
+    for today in test_dates:
+        for (store_id, item_id), batches in inventory.items():
+            shelf = shelf_lives.get(item_id, 7)
+            series = demand_data[(store_id, item_id)]
+            delivery_wds = delivery_schedules.get(store_id, {0, 3})
+
+            history = [(d, q) for d, q in series if d < today]
+            hist_dates = [d for d, _ in history]
+            hist_qtys  = [q for _, q in history]
+
+            fc = forecasters[(store_id, item_id)]
+            fc.fit(hist_dates, hist_qtys)
+            one_day_forecast = fc.predict(1)[0] if hist_dates else 0.0
+
+            batches, wasted = _expire_batches(batches, today)
+            actual_demand = demand_lookup[(store_id, item_id)].get(today, 0)
+            batches, fulfilled = _consume(batches, actual_demand)
+
+            ordered = 0
+            if today.weekday() in delivery_wds:
+                horizon = _days_to_next_delivery(today, delivery_wds)
+                order_qty = agent_compute_order_qty(
+                    batches, fc, horizon, shelf, delivery_wds, today
+                )
+                if order_qty > 0:
+                    expiry = today + timedelta(days=shelf)
+                    batches.append((order_qty, expiry))
+                    ordered = order_qty
+
+            inventory[(store_id, item_id)] = batches
+
+            accumulator.record(DayRecord(
+                date=today,
+                store_id=store_id,
+                item_id=item_id,
+                demand=actual_demand,
+                fulfilled=fulfilled,
+                waste=wasted,
+                ordered=ordered,
+                forecast=one_day_forecast,
+                inventory_eod=_total_inventory(batches),
+            ))
+
+    return BacktestResult(
+        scorecard=accumulator.scorecard(),
+        records=accumulator.records(),
+        forecaster_name="ReplenishmentAgent (expiry-aware, variance-based par)",
         config=config,
     )
