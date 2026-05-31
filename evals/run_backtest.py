@@ -17,8 +17,8 @@ from sqlalchemy import text
 from data.db import SessionLocal
 from evals.backtest import (
     BacktestConfig, BacktestResult, DemandData,
-    DeliverySchedule, ParLevels, ShelfLives,
-    run_backtest, run_agent_backtest,
+    DeliverySchedule, ParLevels, ShelfLives, StoreLocations,
+    run_backtest, run_agent_backtest, run_phase4_backtest,
 )
 from forecasting.forecasters import MovingAverageForecaster, SeasonalNaiveForecaster
 
@@ -96,6 +96,19 @@ def load_shelf_lives(session, item_ids: List[int] | None) -> ShelfLives:
     return {r.id: r.shelf_life_days for r in rows}
 
 
+def load_store_locations(session, store_ids: List[int] | None) -> StoreLocations:
+    where = ""
+    params: dict = {}
+    if store_ids:
+        where = "WHERE id = ANY(:sids)"
+        params["sids"] = store_ids
+    rows = session.execute(
+        text(f"SELECT id, lat, lng FROM stores {where}"),
+        params,
+    ).fetchall()
+    return {r.id: (float(r.lat), float(r.lng)) for r in rows}
+
+
 # ---------------------------------------------------------------------------
 # Pretty-print scorecard
 # ---------------------------------------------------------------------------
@@ -120,6 +133,10 @@ def print_scorecard(result: BacktestResult) -> None:
     print()
     print(f"  Forecast WAPE    : {sc['forecast_wape']*100:>9.1f}%   (lower better)")
     print(f"  Forecast MAPE    : {sc['forecast_mape']*100:>9.1f}%   (lower better)")
+    if "transfers_executed" in sc:
+        print()
+        print(f"  Transfers run    : {sc['transfers_executed']:>10,}")
+        print(f"  Units rescued    : {sc['units_rescued_est']:>10,} (est.)")
     print(f"{'='*55}\n")
 
 
@@ -172,10 +189,11 @@ def main():
     print("Loading data from Postgres...")
     session = SessionLocal()
     try:
-        demand_data       = load_demand_data(session, store_ids, item_ids)
+        demand_data        = load_demand_data(session, store_ids, item_ids)
         delivery_schedules = load_delivery_schedules(session, store_ids)
-        par_levels        = load_par_levels(session, demand_data)
-        shelf_lives       = load_shelf_lives(session, item_ids)
+        par_levels         = load_par_levels(session, demand_data)
+        shelf_lives        = load_shelf_lives(session, item_ids)
+        store_locations    = load_store_locations(session, store_ids)
     finally:
         session.close()
 
@@ -214,6 +232,18 @@ def main():
     )
     print_scorecard(agent_result)
     results.append(agent_result)
+
+    # Phase 4: agent ordering + cross-location transfers
+    print("\nRunning backtest — Phase 4: Agent + Transfers ...")
+    p4_result = run_phase4_backtest(
+        demand_data=demand_data,
+        delivery_schedules=delivery_schedules,
+        shelf_lives=shelf_lives,
+        store_locations=store_locations,
+        config=config,
+    )
+    print_scorecard(p4_result)
+    results.append(p4_result)
 
     compare_results(results)
     print("Backtest complete.")
