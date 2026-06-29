@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: stockflow
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockflow-db
+          property: connectionString
+      - key: DEMO_MODE
+        value: "true"
+      - key: SIMULATION_SPEED_MS
+        value: "4500"
+      - key: LIVE_SIGNALS_ENABLED
+        value: "true"
+      - key: LIVE_SIGNAL_CACHE_SECONDS
+        value: "1800"
+      - key: LIVE_API_TIMEOUT_SECONDS
+        value: "3.0"
+      - key: NWS_USER_AGENT
+        value: "StockFlow/1.0 (portfolio-demo@example.com)"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: stockflow-db
+    plan: free
+    postgresMajorVersion: "16"
+    databaseName: stockflow
+    user: stockflow

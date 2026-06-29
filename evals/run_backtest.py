@@ -7,6 +7,8 @@ Usage:
     python -m evals.run_backtest --store-ids 1,2,3 --item-ids 1,2
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 from datetime import date

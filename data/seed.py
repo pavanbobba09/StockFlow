@@ -19,13 +19,26 @@ from data.synthetic import build_seed_data
 
 
 def clear_tables(session):
+    existing_tables = {
+        r.table_name
+        for r in session.execute(text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+        """)).fetchall()
+    }
     # Delete in FK-safe order
     for table in [
+        "approval_events", "inventory_movements", "agent_decisions",
+        "agent_reasoning_traces",
+        "agent_events", "simulated_demand_events", "waste_events",
+        "simulation_ticks", "demo_inventory_baseline", "demo_state",
         "transfers", "orders", "inventory",
         "demand_history", "delivery_schedules",
         "stores", "warehouses", "items",
     ]:
-        session.execute(text(f"DELETE FROM {table}"))
+        if table in existing_tables:
+            session.execute(text(f"DELETE FROM {table}"))
     session.commit()
     print("Cleared existing data.")
 

@@ -5,6 +5,8 @@ Both are intentionally simple — they are the comparison baseline every
 future improvement must beat on the backtest scorecard.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import date, timedelta

@@ -102,3 +102,116 @@ CREATE INDEX idx_transfers_from_store ON transfers(from_store_id);
 CREATE INDEX idx_transfers_to_store ON transfers(to_store_id);
 CREATE INDEX idx_transfers_status ON transfers(status);
 CREATE INDEX idx_transfers_idempotency ON transfers(idempotency_key);
+
+-- Demo simulator state. These tables make the recruiter-facing agent demo
+-- deterministic, replayable, and auditable without requiring an LLM key.
+CREATE TABLE demo_state (
+    key VARCHAR(100) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE demo_inventory_baseline (
+    id SERIAL PRIMARY KEY,
+    location_id INTEGER NOT NULL,
+    location_type VARCHAR(50) NOT NULL CHECK (location_type IN ('store', 'warehouse')),
+    item_id INTEGER NOT NULL REFERENCES items(id),
+    quantity INTEGER NOT NULL,
+    expiry_date DATE
+);
+
+CREATE TABLE simulation_ticks (
+    id SERIAL PRIMARY KEY,
+    sim_day INTEGER NOT NULL,
+    sim_date DATE NOT NULL,
+    scenario VARCHAR(100) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'completed',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE agent_events (
+    id SERIAL PRIMARY KEY,
+    tick_id INTEGER REFERENCES simulation_ticks(id),
+    agent_name VARCHAR(100) NOT NULL,
+    event_type VARCHAR(100) NOT NULL,
+    store_id INTEGER REFERENCES stores(id),
+    item_id INTEGER REFERENCES items(id),
+    severity VARCHAR(50) NOT NULL DEFAULT 'info',
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE agent_reasoning_traces (
+    id SERIAL PRIMARY KEY,
+    tick_id INTEGER REFERENCES simulation_ticks(id),
+    agent_name VARCHAR(100) NOT NULL,
+    tool_name VARCHAR(100) NOT NULL,
+    input_summary TEXT NOT NULL,
+    observation TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_agent_reasoning_traces_tick ON agent_reasoning_traces(tick_id);
+
+CREATE TABLE agent_decisions (
+    id SERIAL PRIMARY KEY,
+    tick_id INTEGER REFERENCES simulation_ticks(id),
+    decision_type VARCHAR(50) NOT NULL CHECK (decision_type IN ('order', 'transfer', 'markdown', 'donation')),
+    agent_name VARCHAR(100) NOT NULL,
+    store_id INTEGER REFERENCES stores(id),
+    target_store_id INTEGER REFERENCES stores(id),
+    item_id INTEGER REFERENCES items(id),
+    quantity INTEGER NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    idempotency_key VARCHAR(255) NOT NULL UNIQUE,
+    reason TEXT NOT NULL,
+    expected_impact TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    decided_at TIMESTAMP
+);
+
+CREATE INDEX idx_agent_decisions_status ON agent_decisions(status);
+CREATE INDEX idx_agent_decisions_type ON agent_decisions(decision_type);
+
+CREATE TABLE approval_events (
+    id SERIAL PRIMARY KEY,
+    decision_id INTEGER NOT NULL REFERENCES agent_decisions(id),
+    action VARCHAR(50) NOT NULL CHECK (action IN ('approved', 'rejected')),
+    idempotency_key VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE inventory_movements (
+    id SERIAL PRIMARY KEY,
+    decision_id INTEGER REFERENCES agent_decisions(id),
+    movement_type VARCHAR(50) NOT NULL,
+    from_location_id INTEGER,
+    from_location_type VARCHAR(50),
+    to_location_id INTEGER,
+    to_location_type VARCHAR(50),
+    item_id INTEGER NOT NULL REFERENCES items(id),
+    quantity INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE simulated_demand_events (
+    id SERIAL PRIMARY KEY,
+    tick_id INTEGER REFERENCES simulation_ticks(id),
+    store_id INTEGER NOT NULL REFERENCES stores(id),
+    item_id INTEGER NOT NULL REFERENCES items(id),
+    demand INTEGER NOT NULL,
+    fulfilled INTEGER NOT NULL,
+    stockout_units INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE waste_events (
+    id SERIAL PRIMARY KEY,
+    tick_id INTEGER REFERENCES simulation_ticks(id),
+    store_id INTEGER NOT NULL REFERENCES stores(id),
+    item_id INTEGER NOT NULL REFERENCES items(id),
+    quantity INTEGER NOT NULL,
+    reason VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

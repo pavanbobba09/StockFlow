@@ -11,6 +11,8 @@ Inventory model:
     capped by shelf life (don't order more than will sell before expiry).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Dict, List, Tuple, Type
