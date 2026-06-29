@@ -122,8 +122,12 @@ h1 {
 .demo-grid {
     display: grid;
     grid-template-columns: minmax(620px, 1fr) 430px;
-    grid-template-rows: minmax(620px, calc(100vh - 230px)) 250px;
+    grid-template-rows: minmax(620px, calc(100vh - 230px)) minmax(250px, auto);
     gap: 16px;
+}
+
+.demo-grid > * {
+    min-width: 0;
 }
 
 .map-panel,
@@ -236,10 +240,11 @@ body.busy .decision-actions button {
 
 .side-panel {
     display: grid;
-    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(120px, 0.8fr) minmax(180px, 1.2fr);
     gap: 12px;
     padding: 12px;
     min-height: 0;
+    overflow: hidden;
 }
 
 .metric-board {
@@ -323,7 +328,11 @@ body.busy .decision-actions button {
 .agent-roster {
     display: grid;
     gap: 8px;
+    flex: 1;
     margin-top: 12px;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 4px;
 }
 
 .agent-card {
@@ -382,10 +391,17 @@ body.busy .decision-actions button {
     min-height: 0;
 }
 
+.agent-panel,
+.decision-panel {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+}
+
 .decision-list {
     display: grid;
     gap: 10px;
-    max-height: 360px;
+    flex: 1;
     margin-top: 12px;
     padding-right: 4px;
 }
@@ -460,6 +476,7 @@ body.busy .decision-actions button {
     grid-column: 1 / -1;
     padding: 14px;
     min-height: 0;
+    overflow: hidden;
 }
 
 .event-feed {
@@ -650,6 +667,15 @@ body.busy .decision-actions button {
     .demo-grid {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto auto;
+    }
+
+    .side-panel {
+        overflow: visible;
+    }
+
+    .agent-roster,
+    .decision-list {
+        max-height: 360px;
     }
 
     .map-panel {

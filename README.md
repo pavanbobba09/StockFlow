@@ -56,6 +56,52 @@ The graph calls supply-chain tools such as:
 
 Every tool call writes a reasoning trace with agent name, tool name, input summary, observation, and decision. This makes the project visibly agentic without letting an LLM hallucinate business-critical inventory actions.
 
+## MCP Server for AI Clients
+
+StockFlow also exposes a Model Context Protocol integration layer so AI clients
+can connect to the supply-chain system as tools, resources, and prompts.
+
+Use FastAPI REST endpoints for normal applications. Use MCP when another AI
+assistant, IDE agent, or orchestration client needs to inspect StockFlow state,
+call simulator tools, or explain agent decisions.
+
+MCP transports:
+
+- Local stdio server: `python -m mcp_server`
+- Hosted HTTP endpoint: `POST https://stockflow-zfob.onrender.com/mcp`
+
+Exposed MCP tools:
+
+- `get_demo_state`
+- `get_pending_decisions`
+- `get_agent_events`
+- `get_reasoning_traces`
+- `get_demo_metrics`
+- `get_live_signals`
+- `run_simulation_tick`
+- `set_scenario`
+- `approve_decision`
+- `reject_decision`
+- `reset_demo`
+
+Exposed MCP resources:
+
+- `stockflow://current-state`
+- `stockflow://metrics/demo-impact`
+- `stockflow://agents/reasoning-traces`
+- `stockflow://architecture`
+
+Exposed MCP prompts:
+
+- `explain_franchise_risk`
+- `compare_agents_vs_baseline`
+- `prepare_recruiter_demo_script`
+
+The MCP layer wraps the same deterministic LangGraph-style simulator and
+Postgres state used by the frontend. In a real enterprise deployment, mutating
+MCP tools such as approvals would be protected with auth/RBAC; in this portfolio
+project they mutate only synthetic demo data.
+
 ## Quick Start
 
 ### 1. Create virtual environment and install dependencies
@@ -159,6 +205,7 @@ Prometheus: http://localhost:9090
 
 API endpoints:
 - `GET /health` - Health check
+- `POST /mcp` - MCP JSON-RPC endpoint for AI clients
 - `GET /demo/state` - Full live simulator state
 - `POST /demo/tick` - Advance one simulated day and run agents
 - `POST /demo/reset` - Reset the demo to the synthetic baseline

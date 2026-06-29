@@ -31,7 +31,7 @@ from pathlib import Path
 
 from data.db import get_db, check_connection, SessionLocal
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Counter, Histogram
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from agents.demo_simulator import (
     apply_scenario,
@@ -48,6 +48,7 @@ from agents.demo_simulator import (
     set_autoplay,
 )
 from agents.live_signals import get_live_signal_summary
+from integrations.mcp_server import handle_mcp_message
 
 app = FastAPI(
     title="StockFlow API",
@@ -175,6 +176,38 @@ def health():
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database error: {e}")
+
+
+# ---------------------------------------------------------------------------
+# MCP integration
+# ---------------------------------------------------------------------------
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request):
+    """
+    Streamable-HTTP-shaped MCP endpoint for AI clients.
+
+    This exposes the same synthetic demo tools as the stdio MCP server. Public
+    production use would add auth/RBAC before enabling mutating tools.
+    """
+    try:
+        message = await request.json()
+    except Exception as e:
+        return JSONResponse(
+            status_code=400,
+            content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {e}"}},
+        )
+
+    response = handle_mcp_message(message)
+    if response is None:
+        return Response(status_code=202)
+    return JSONResponse(content=response)
+
+
+@app.get("/mcp")
+def mcp_get():
+    """This MCP endpoint accepts JSON-RPC messages through POST."""
+    return Response(status_code=405)
 
 
 # ---------------------------------------------------------------------------

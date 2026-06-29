@@ -6,7 +6,7 @@
 
 ## One-Line Resume Bullet
 
-Built a multi-agent inventory optimization system for franchise restaurants that forecasts demand, detects low-stock and expiry risk, proposes replenishment orders and nearby store-to-store transfers, and measures impact through a backtest scorecard.
+Built a multi-agent inventory optimization system for franchise restaurants that forecasts demand, detects low-stock and expiry risk, proposes replenishment orders and nearby store-to-store transfers, exposes MCP tools for AI-client integration, and measures impact through a backtest scorecard.
 
 ## Strong Resume Bullets
 
@@ -17,6 +17,7 @@ Built a multi-agent inventory optimization system for franchise restaurants that
 - Added geospatial transfer logic to recommend moving excess food from overstocked restaurants to nearby shortage-risk restaurants before placing new supplier orders.
 - Built a live operations-room frontend that visualizes franchise inventory risk, agent reasoning, proposed transfers, supplier orders, and before/after supply-chain metrics.
 - Persisted agent reasoning traces showing tool inputs, observations, and decisions for each simulation tick.
+- Added a Model Context Protocol adapter so external AI clients can inspect live state, call simulator tools, read reasoning traces, and use reusable supply-chain prompts.
 
 ## Interview Explanation
 
@@ -34,6 +35,7 @@ The important engineering point is that agents do not directly mutate business s
 
 - **Backend**: FastAPI, Python, SQLAlchemy, Postgres/PostGIS.
 - **Agents**: LangGraph orchestration, deterministic decision tools, reasoning traces, plus optional LLM explanations.
+- **AI integration**: MCP stdio and HTTP JSON-RPC endpoints exposing tools, resources, and prompts for external AI clients.
 - **Forecasting**: moving average and seasonal naive baselines with backtest comparison.
 - **Geospatial logic**: nearby-store matching for transfer recommendations.
 - **Evals**: stockout rate, fill rate, waste rate, forecast error, transfer units, and estimated profit saved.
