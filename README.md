@@ -2,7 +2,7 @@
 
 Multi-Agent Franchise Supply Chain Simulator.
 
-[Live demo](https://stockflow-zfob.onrender.com) · [Resume summary](RESUME.md) · [Architecture](ARCHITECTURE.md) · [Project walkthrough](PROJECT_WALKTHROUGH.md)
+[Live demo](https://stockflow-zfob.onrender.com) · [Architecture](ARCHITECTURE.md) · [Project walkthrough](PROJECT_WALKTHROUGH.md)
 
 StockFlow is an AI-agent portfolio project for restaurant franchise supply chains. It simulates a fictional quick-service restaurant network where customer demand drains store inventory, food expires, and agents coordinate replenishment orders and nearby store-to-store transfers before stockouts and waste happen.
 
@@ -265,7 +265,6 @@ StockFlow/
 ├── scripts/             # Hosted bootstrap scripts
 ├── frontend/            # Recruiter-facing 3D/geo operations room
 ├── render.yaml          # Free Render Blueprint
-├── RESUME.md            # Resume-ready project summary
 ├── ARCHITECTURE.md      # Architecture docs
 ├── WORK_BREAKDOWN.md    # Phased plan
 └── RULES.md             # Coding rules
