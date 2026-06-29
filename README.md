@@ -177,6 +177,8 @@ API endpoints:
 
 ## Free Live Deployment
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pavanbobba09/StockFlow)
+
 The repo includes a `render.yaml` Blueprint for a no-cost Render deployment:
 
 - Docker web service on Render's free web-service plan.
