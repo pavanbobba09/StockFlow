@@ -2,6 +2,8 @@
 
 Multi-Agent Franchise Supply Chain Simulator.
 
+[Live demo](https://stockflow-zfob.onrender.com) · [Resume summary](RESUME.md) · [Architecture](ARCHITECTURE.md) · [Project walkthrough](PROJECT_WALKTHROUGH.md)
+
 StockFlow is an AI-agent portfolio project for restaurant franchise supply chains. It simulates a fictional quick-service restaurant network where customer demand drains store inventory, food expires, and agents coordinate replenishment orders and nearby store-to-store transfers before stockouts and waste happen.
 
 The goal is not to be a generic full-stack dashboard or a visual-only demo. The live map is the recruiter-facing way to understand the system, but the project is built around the harder engineering work: deterministic agent decision logic, idempotent approval flows, geospatial store-to-store transfers, perishable inventory constraints, backtest metrics, and measurable stockout/waste tradeoffs.
@@ -150,6 +152,8 @@ docker compose up -d
 
 Frontend / agent simulator: http://localhost:8000
 API Docs: http://localhost:8000/docs
+Live frontend: https://stockflow-zfob.onrender.com
+Live API Docs: https://stockflow-zfob.onrender.com/docs
 Grafana: http://localhost:3000 (admin/admin)
 Prometheus: http://localhost:9090
 
@@ -177,9 +181,11 @@ API endpoints:
 
 ## Free Live Deployment
 
+[Live Render app: https://stockflow-zfob.onrender.com](https://stockflow-zfob.onrender.com)
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pavanbobba09/StockFlow)
 
-The repo includes a `render.yaml` Blueprint for a no-cost Render deployment:
+The project is deployed on Render's free plan. The repo also includes a `render.yaml` Blueprint for repeatable no-cost deployment:
 
 - Docker web service on Render's free web-service plan.
 - Render Postgres on the free database plan.
@@ -209,7 +215,10 @@ StockFlow/
 ├── data/                # Schema + synthetic data gen
 ├── evals/               # Backtest harness, metrics
 ├── tests/               # Tests
-├── CLAUDE.md            # Project context
+├── scripts/             # Hosted bootstrap scripts
+├── frontend/            # Recruiter-facing 3D/geo operations room
+├── render.yaml          # Free Render Blueprint
+├── RESUME.md            # Resume-ready project summary
 ├── ARCHITECTURE.md      # Architecture docs
 ├── WORK_BREAKDOWN.md    # Phased plan
 └── RULES.md             # Coding rules
@@ -217,7 +226,7 @@ StockFlow/
 
 ## Recruiter Demo Flow
 
-1. Open `http://localhost:8000`.
+1. Open [https://stockflow-zfob.onrender.com](https://stockflow-zfob.onrender.com) or `http://localhost:8000` for local development.
 2. Pick a scenario such as **Weekend Rush** or **Expiry Rescue**.
 3. Click **Run Day** or **Auto Play**.
 4. Watch restaurant towers change color as inventory risk changes.
@@ -232,9 +241,9 @@ StockFlow/
 - **Phase 2**: ✅ Forecasting + eval harness
 - **Phase 3**: ✅ Replenishment agent
 - **Phase 4**: ✅ Transfer/waste agent
-- **Phase 5**: ✅ API + observability (current)
+- **Phase 5**: ✅ API + observability
 - **Phase 6**: ✅ Geo map frontend
-- **Phase 7**: 🔜 Go live (hosted deployment)
+- **Phase 7**: ✅ Live free deployment on Render
 
 See [WORK_BREAKDOWN.md](WORK_BREAKDOWN.md) for details.
 
