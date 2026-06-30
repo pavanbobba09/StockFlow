@@ -8,7 +8,8 @@ Usage:
 
 import sys
 import argparse
-from sqlalchemy import text
+from pathlib import Path
+from sqlalchemy import inspect, text
 
 from data.db import SessionLocal, engine
 from data.models import (
@@ -16,6 +17,26 @@ from data.models import (
     DemandHistory, DeliverySchedule,
 )
 from data.synthetic import build_seed_data
+
+SCHEMA_SQL = Path(__file__).resolve().parent / "schema" / "init.sql"
+
+
+def apply_schema_if_needed():
+    """Create core tables from init.sql when absent.
+
+    Docker Compose applies init.sql at container creation, but a plain local
+    Postgres (no Docker) starts empty, so seeding directly would fail.
+    """
+    if "stores" in inspect(engine).get_table_names(schema="public"):
+        return
+    print("Core tables missing — applying schema from init.sql...")
+    raw = engine.raw_connection()
+    try:
+        with raw.cursor() as cursor:
+            cursor.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
+        raw.commit()
+    finally:
+        raw.close()
 
 
 def clear_tables(session):
@@ -185,6 +206,8 @@ def main():
     parser.add_argument("--check", action="store_true",
                         help="Run verification queries only (skip seeding)")
     args = parser.parse_args()
+
+    apply_schema_if_needed()
 
     session = SessionLocal()
     try:
