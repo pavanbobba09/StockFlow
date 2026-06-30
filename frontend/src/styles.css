@@ -43,6 +43,13 @@ button {
     padding: 18px;
 }
 
+.loading-shell {
+    display: grid;
+    min-height: 100vh;
+    padding: 18px;
+    place-items: center;
+}
+
 .topbar {
     display: flex;
     align-items: end;

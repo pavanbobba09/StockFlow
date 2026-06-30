@@ -138,15 +138,18 @@ Why:
 - show system health,
 - make the project more production-shaped.
 
-### Leaflet / HTML / CSS / JavaScript
+### React / Vite / TypeScript / TanStack Query / Zustand / Leaflet
 
-The frontend uses a lightweight map UI.
+The frontend uses a modern React operations-room UI.
 
 Why:
 
-- no heavy frontend build system needed,
-- easy to run from FastAPI,
-- good enough to show restaurants, warehouses, routes, and agent activity.
+- React components keep metrics, decisions, agents, traces, and map views reusable,
+- Vite gives fast local development and simple production builds,
+- TypeScript makes API state and decision objects safer to change,
+- TanStack Query handles API fetching, mutations, cache refreshes, and live-state invalidation,
+- Zustand keeps small UI state such as active scenario, autoplay, and stream status simple,
+- Leaflet renders restaurants, warehouses, transfer routes, and risk signals.
 
 The frontend shows:
 

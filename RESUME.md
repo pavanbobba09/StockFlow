@@ -40,7 +40,7 @@ The important engineering point is that agents do not directly mutate business s
 - **Geospatial logic**: nearby-store matching for transfer recommendations.
 - **Evals**: stockout rate, fill rate, waste rate, forecast error, transfer units, and estimated profit saved.
 - **Safety**: human-in-the-loop approvals and idempotency keys for mutations.
-- **Frontend**: live map/operations-room visualization for explaining agent activity.
+- **Frontend**: React, Vite, TypeScript, TanStack Query, Zustand, Leaflet.js operations-room UI for explaining agent activity.
 
 ## What Makes It More Than A Demo
 

@@ -196,7 +196,18 @@ python -m api.run --reload
 docker compose up -d
 ```
 
+### 8. Run frontend dev server
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend stack: React, Vite, TypeScript, TanStack Query, Zustand, and Leaflet.js.
+
 Frontend / agent simulator: http://localhost:8000
+Frontend dev server: http://localhost:5173
 API Docs: http://localhost:8000/docs
 Live frontend: https://stockflow-zfob.onrender.com
 Live API Docs: https://stockflow-zfob.onrender.com/docs
@@ -263,7 +274,7 @@ StockFlow/
 ├── evals/               # Backtest harness, metrics
 ├── tests/               # Tests
 ├── scripts/             # Hosted bootstrap scripts
-├── frontend/            # Recruiter-facing 3D/geo operations room
+├── frontend/            # React/Vite/TypeScript operations room
 ├── render.yaml          # Free Render Blueprint
 ├── ARCHITECTURE.md      # Architecture docs
 ├── WORK_BREAKDOWN.md    # Phased plan

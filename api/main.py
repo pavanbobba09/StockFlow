@@ -67,7 +67,13 @@ app.add_middleware(
 
 # Mount static files
 BASE_DIR = Path(__file__).resolve().parent.parent
-app.mount("/static", StaticFiles(directory=BASE_DIR / "frontend" / "static"), name="static")
+FRONTEND_DIR = BASE_DIR / "frontend"
+FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
+FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
+if FRONTEND_ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="assets")
+if (FRONTEND_DIR / "static").exists():
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 
 
 @app.on_event("startup")
@@ -162,7 +168,10 @@ class MetricsOut(BaseModel):
 @app.get("/")
 def serve_frontend():
     """Serve the frontend."""
-    return FileResponse(BASE_DIR / "frontend" / "index.html")
+    built_index = FRONTEND_DIST_DIR / "index.html"
+    if built_index.exists():
+        return FileResponse(built_index)
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 # ---------------------------------------------------------------------------
