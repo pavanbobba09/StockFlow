@@ -1,317 +1,281 @@
-# StockFlow
+# StockFlow: Multi-Agent Franchise Supply Chain Simulator
 
-Multi-Agent Franchise Supply Chain Simulator.
+StockFlow is an AI-agent-first supply chain simulator for franchise restaurant networks. It shows how multiple specialized agents can watch inventory, forecast demand, reduce food waste, recommend transfers between nearby stores, and create auditable decisions for a human manager to approve.
 
-[Live demo](https://stockflow-zfob.onrender.com) · [Architecture](ARCHITECTURE.md) · [Project walkthrough](PROJECT_WALKTHROUGH.md)
+The project is built as a resume-ready AI systems project, not a normal CRUD inventory dashboard. The frontend exists to make the agent reasoning understandable through a live geo/3D-style operations screen.
 
-StockFlow is an AI-agent portfolio project for restaurant franchise supply chains. It simulates a fictional quick-service restaurant network where customer demand drains store inventory, food expires, and agents coordinate replenishment orders and nearby store-to-store transfers before stockouts and waste happen.
+## Problem Statement
 
-The goal is not to be a generic full-stack dashboard or a visual-only demo. The live map is the recruiter-facing way to understand the system, but the project is built around the harder engineering work: deterministic agent decision logic, idempotent approval flows, geospatial store-to-store transfers, perishable inventory constraints, backtest metrics, and measurable stockout/waste tradeoffs.
+Franchise restaurants have a difficult inventory problem:
 
-One-line pitch: AI agents that help franchise restaurants order the right amount of food, rescue excess stock through nearby transfers, and reduce both stockouts and spoilage.
+- If a store orders too little, customers face stockouts and the business loses sales.
+- If a store orders too much, perishable food expires and profit is lost through waste.
+- Demand changes by location, weekday, local events, weather, promotions, and delivery delays.
+- Nearby stores may have opposite problems at the same time: one store is short, another store is overstocked.
+- Managers need recommendations they can trust, but they also need an audit trail explaining why each action was proposed.
 
-## Demo Agents
+StockFlow solves this by using a multi-agent decision engine that continuously evaluates store inventory, simulated demand, expiry risk, transfer opportunities, and replenishment needs.
 
-- **Inventory Watcher Agent** checks customer demand against live restaurant stock.
-- **Demand Forecast Agent** predicts rushes from scenario, weekday/weekend patterns, and recent demand.
-- **Replenishment Agent** proposes supplier orders when inventory will not cover near-term demand.
-- **Transfer/Waste Agent** finds nearby restaurants that can use excess or expiring food before it spoils.
-- **Manager Approval Agent** keeps humans in the loop for order, transfer, markdown, and donation decisions.
+## What We Built
 
-The demo path works without an LLM API key. Core decisions are deterministic and testable; LLM explanations can be added later as an enhancement.
+StockFlow includes:
 
-## Why This Is Resume-Strong
+- A LangGraph-based multi-agent decision workflow.
+- Specialized agents for inventory watching, demand forecasting, replenishment, transfer/waste prevention, and manager approval.
+- Tool-calling agents that read supply chain state, create decisions, and record reasoning traces.
+- Deterministic simulation logic so the demo works without paid API keys.
+- Optional LLM explanations when an API key is available.
+- FastAPI endpoints for demo state, simulation ticks, decisions, metrics, agent events, and MCP integration.
+- PostgreSQL/PostGIS-backed durable state for inventory, stores, decisions, events, approvals, and geospatial transfer logic.
+- A React + Vite + TypeScript frontend for the live operations view.
+- A recruiter-friendly map view showing stores, warehouses, risk signals, agent timeline, decision cards, and impact metrics.
+- A Model Context Protocol server so external AI assistants can inspect and operate the simulator through tools/resources/prompts.
+- Docker and Render deployment support.
 
-StockFlow is designed to show backend, AI-agent, forecasting, and systems judgment in one project:
+## Why Multi-Agent
 
-- **Agentic reasoning with business constraints**: agents do not just chat; they inspect stock, forecast demand, reason about shelf life, compare transfer cost versus waste cost, and propose actions.
-- **Human-in-the-loop safety**: agents propose orders, transfers, markdowns, and donations; humans approve or reject mutations.
-- **Idempotent mutation design**: decision approvals use idempotency keys so retries cannot duplicate real business actions.
-- **Geospatial optimization**: transfer decisions use nearby-store reasoning so excess inventory can move before new supplier orders are placed.
-- **Evals-first proof**: the backtest harness compares baseline forecasting and agent strategies using stockout rate, fill rate, waste rate, forecast error, and transfer impact.
-- **Production-shaped API and persistence**: agent events, decisions, inventory movements, demand events, approval events, and waste events are stored durably.
-- **LangGraph orchestration and reasoning traces**: the decision path runs through named graph nodes, calls explicit tools, and stores tool inputs, observations, and decisions.
-- **Free live signals**: National Weather Service weather and Nager.Date holiday data can raise demand pressure without paid API keys.
-- **Recruiter-readable visualization**: the frontend is not the product by itself; it is the live operations room that makes the agent system legible.
+This project does not use one large agent to do everything. It separates responsibilities into smaller agents because that is easier to test, explain, debug, and trust.
 
-## LangGraph Decision Flow
+The agents are:
 
-Each simulation tick runs this multi-agent graph:
+| Agent | Responsibility |
+| --- | --- |
+| Inventory Watcher Agent | Checks current stock, low inventory, stockout risk, and expiry pressure. |
+| Demand Forecast Agent | Estimates upcoming demand using scenario, store, item, and demand history signals. |
+| Replenishment Agent | Proposes supplier orders when projected stock is below the target level. |
+| Transfer/Waste Agent | Finds nearby stores that can transfer excess stock before it expires. |
+| Manager Approval Agent | Converts agent recommendations into human-reviewable approve/reject decisions. |
 
-```text
-Inventory Watcher Agent
-  -> Demand Forecast Agent
-  -> Transfer/Waste Agent
-  -> Replenishment Agent
-  -> Baseline Scorer Agent
+Each agent produces a plain-English explanation and an auditable trace of what it checked.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    User["Recruiter / Manager"] --> UI["React + Vite Frontend"]
+    UI --> API["FastAPI Backend"]
+
+    API --> Demo["Simulation Engine"]
+    API --> Metrics["Impact Metrics"]
+    API --> MCP["MCP Adapter"]
+
+    Demo --> Graph["LangGraph Multi-Agent Workflow"]
+
+    Graph --> IW["Inventory Watcher Agent"]
+    Graph --> DF["Demand Forecast Agent"]
+    Graph --> RP["Replenishment Agent"]
+    Graph --> TW["Transfer / Waste Agent"]
+    Graph --> MA["Manager Approval Agent"]
+
+    IW --> Tools["Agent Tools"]
+    DF --> Tools
+    RP --> Tools
+    TW --> Tools
+    MA --> Tools
+
+    Tools --> DB["PostgreSQL + PostGIS"]
+    API --> DB
+
+    DB --> State["Stores, Warehouses, Inventory, Demand, Decisions, Events, Traces"]
+
+    MCP --> External["External AI Clients / Assistants"]
+    External --> MCP
+
+    API --> Render["Docker / Render Deployment"]
 ```
 
-The graph calls supply-chain tools such as:
+## How It Works Step by Step
 
-- `scan_inventory_risk`
-- `forecast_risk_items`
-- `find_transfer_candidates`
-- `estimate_replenishment_need`
-- `score_against_baseline`
+1. The frontend requests the current supply chain state from the backend.
+2. The simulator creates synthetic restaurant demand for each tick.
+3. Inventory is reduced as customer demand is fulfilled.
+4. The Inventory Watcher Agent checks which stores are at risk.
+5. The Demand Forecast Agent estimates near-future demand.
+6. The Replenishment Agent decides whether a supplier order is needed.
+7. The Transfer/Waste Agent checks whether nearby stores can transfer stock before placing a new order.
+8. The Manager Approval Agent creates a pending decision for the human manager.
+9. The UI displays the recommendation, reasoning trace, risk level, and business impact.
+10. The user approves or rejects the decision.
+11. Approved actions update inventory and metrics through idempotent mutation tools.
+12. The metrics compare agent-assisted decisions against a baseline.
 
-Every tool call writes a reasoning trace with agent name, tool name, input summary, observation, and decision. This makes the project visibly agentic without letting an LLM hallucinate business-critical inventory actions.
+## Main User Experience
 
-## MCP Server for AI Clients
+The main screen is designed to quickly explain the project to a recruiter:
 
-StockFlow also exposes a Model Context Protocol integration layer so AI clients
-can connect to the supply-chain system as tools, resources, and prompts.
+- Store nodes show inventory health and risk.
+- Warehouse hubs show supply sources.
+- Agent cards show which agent is responsible for each part of the workflow.
+- The timeline shows what the agents did during each simulation tick.
+- Tool traces show what data the agents used.
+- Decision cards show recommended orders or transfers with approve/reject controls.
+- Metrics show the value of the agent system compared with a baseline.
 
-Use FastAPI REST endpoints for normal applications. Use MCP when another AI
-assistant, IDE agent, or orchestration client needs to inspect StockFlow state,
-call simulator tools, or explain agent decisions.
+## Key API Endpoints
 
-MCP transports:
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /` | Serves the frontend. |
+| `GET /health` | Checks API and database health. |
+| `GET /demo/state` | Returns current simulator state for the frontend. |
+| `POST /demo/tick` | Runs one simulation tick. |
+| `POST /demo/reset` | Resets the demo state. |
+| `POST /demo/autoplay/start` | Starts automatic simulation ticks. |
+| `POST /demo/autoplay/stop` | Stops automatic simulation ticks. |
+| `POST /demo/scenario/{scenario_name}` | Applies a scenario such as rush, delay, expiry, or transfer pressure. |
+| `GET /agents/events` | Returns agent event timeline data. |
+| `GET /agents/decisions/pending` | Returns pending human decisions. |
+| `POST /agents/decisions/{id}/approve` | Approves an agent recommendation. |
+| `POST /agents/decisions/{id}/reject` | Rejects an agent recommendation. |
+| `GET /metrics/demo-impact` | Shows baseline-vs-agent impact metrics. |
+| `POST /mcp` | HTTP JSON-RPC entry point for MCP clients. |
 
-- Local stdio server: `python -m mcp_server`
-- Hosted HTTP endpoint: `POST https://stockflow-zfob.onrender.com/mcp`
+## MCP Integration
 
-Exposed MCP tools:
+StockFlow also exposes a Model Context Protocol adapter. This makes the project useful beyond the built-in frontend.
 
-- `get_demo_state`
-- `get_pending_decisions`
-- `get_agent_events`
-- `get_reasoning_traces`
-- `get_demo_metrics`
-- `get_live_signals`
-- `run_simulation_tick`
-- `set_scenario`
-- `approve_decision`
-- `reject_decision`
-- `reset_demo`
+With MCP, an external AI assistant can:
 
-Exposed MCP resources:
+- Inspect live supply chain state.
+- Read agent events and reasoning traces.
+- Run a simulation tick.
+- View pending decisions.
+- Approve or reject recommendations.
+- Compare agent performance against the baseline.
+- Use reusable prompts to explain franchise risk or summarize agent behavior.
 
-- `stockflow://current-state`
-- `stockflow://metrics/demo-impact`
-- `stockflow://agents/reasoning-traces`
-- `stockflow://architecture`
+This demonstrates interoperability: the agent system is not locked inside one UI.
 
-Exposed MCP prompts:
+## Tech Stack
 
-- `explain_franchise_risk`
-- `compare_agents_vs_baseline`
-- `prepare_recruiter_demo_script`
+| Area | Technology | Why It Is Used |
+| --- | --- | --- |
+| Backend API | FastAPI | Fast Python API layer with clear endpoint structure. |
+| Agent Orchestration | LangGraph | Coordinates multi-step, multi-agent decision flow. |
+| Agent Tooling | LangChain-style tools | Gives agents structured actions instead of free-form text only. |
+| Data Layer | PostgreSQL + PostGIS | Stores durable state and supports geospatial transfer decisions. |
+| ORM / DB Access | SQLAlchemy | Python database access and transaction handling. |
+| Frontend | React + Vite + TypeScript | Modern frontend stack for a fast interactive dashboard. |
+| API State | TanStack Query | Handles frontend server-state fetching and refresh behavior. |
+| UI State | Zustand | Keeps simulator UI state simple and lightweight. |
+| Map / Geo UI | Leaflet | Displays stores, warehouses, and risk signals on a live map. |
+| Interoperability | MCP | Lets external AI clients call StockFlow tools and read context. |
+| Deployment | Docker + Render | Reproducible container deployment with a public live URL. |
+| Testing | Pytest, TypeScript build, Vite build | Verifies backend logic, MCP behavior, and frontend production build. |
 
-The MCP layer wraps the same deterministic LangGraph-style simulator and
-Postgres state used by the frontend. In a real enterprise deployment, mutating
-MCP tools such as approvals would be protected with auth/RBAC; in this portfolio
-project they mutate only synthetic demo data.
+## Running Locally
 
-## Quick Start
-
-### 1. Create virtual environment and install dependencies
+### 1. Start the database
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+docker compose up -d db
+```
+
+### 2. Install backend dependencies
+
+```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Start Docker Compose
+### 3. Seed data
 
 ```bash
-docker-compose up -d
-```
-
-Wait for Postgres+PostGIS to be ready (check health status).
-
-### 3. Verify database
-
-```bash
-# Connect to database
-docker exec -it stockflow-db psql -U stockflow -d stockflow
-
-# Verify PostGIS is enabled
-SELECT PostGIS_Version();
-
-# List tables
-\dt
-
-# Exit
-\q
-```
-
-You should see:
-- PostGIS version displayed
-- Tables: stores, warehouses, items, inventory, demand_history, delivery_schedules, orders, transfers
-
-### 4. Environment
-
-Set up `.env` file with:
-
-```
-DATABASE_URL=postgresql://stockflow:stockflow@localhost:5432/stockflow
-DEMO_MODE=true
-SIMULATION_SPEED_MS=4500
-LIVE_SIGNALS_ENABLED=true
-LIVE_SIGNAL_CACHE_SECONDS=1800
-LIVE_API_TIMEOUT_SECONDS=3.0
-NWS_USER_AGENT=StockFlow/1.0 (your-email@example.com)
-ANTHROPIC_API_KEY=
-```
-
-### 5. Seed Database
-
-```bash
-# Activate venv first
-source venv/bin/activate
-
-# Seed synthetic data
 python -m data.seed
-
-# Verify queries work
-python -m data.seed --check
 ```
 
-This creates 15 stores, 3 warehouses, 15 items, 180 days of demand history.
-
-### 6. Run Backtest
+### 4. Install frontend dependencies
 
 ```bash
-# Compare forecasters + agent strategies
-python -m evals.run_backtest
-
-# Custom config
-python -m evals.run_backtest --train-days 90 --test-days 60
+npm install --prefix frontend
 ```
 
-Shows scorecard for:
-- MovingAverage baseline
-- SeasonalNaive baseline
-- Replenishment agent (expiry-aware, variance-based par)
-- Phase 4 (agent + cross-location transfers)
-
-### 7. Run API
+### 5. Build frontend
 
 ```bash
-# Local dev
-python -m api.run --reload
-
-# Or via Docker Compose (includes Prometheus + Grafana)
-docker compose up -d
+npm run build --prefix frontend
 ```
 
-### 8. Run frontend dev server
+### 6. Run the API
 
 ```bash
-cd frontend
-npm install
-npm run dev
+python -m api.run
 ```
 
-Frontend stack: React, Vite, TypeScript, TanStack Query, Zustand, and Leaflet.js.
+Open:
 
-Frontend / agent simulator: http://localhost:8000
-Frontend dev server: http://localhost:5173
-API Docs: http://localhost:8000/docs
-Live frontend: https://stockflow-zfob.onrender.com
-Live API Docs: https://stockflow-zfob.onrender.com/docs
-Grafana: http://localhost:3000 (admin/admin)
-Prometheus: http://localhost:9090
-
-API endpoints:
-- `GET /health` - Health check
-- `POST /mcp` - MCP JSON-RPC endpoint for AI clients
-- `GET /demo/state` - Full live simulator state
-- `POST /demo/tick` - Advance one simulated day and run agents
-- `POST /demo/reset` - Reset the demo to the synthetic baseline
-- `POST /demo/scenario/{scenario_name}` - Load `weekend-rush`, `game-day-spike`, `delivery-delay`, `expiry-rescue`, or `store-to-store-transfer`
-- `GET /agents/events` - Recent agent timeline
-- `GET /agents/reasoning-traces` - LangGraph tool-call traces
-- `GET /agents/decisions/pending` - Pending human approval decisions
-- `GET /live/signals` - Current free weather/holiday demand signals
-- `POST /live/signals/refresh` - Force refresh free live signals
-- `POST /agents/decisions/{id}/approve` - Approve an agent decision idempotently
-- `POST /agents/decisions/{id}/reject` - Reject an agent decision idempotently
-- `GET /metrics/demo-impact` - Before/after proof metrics
-- `GET /stores` - List stores
-- `GET /inventory/{store_id}` - Store inventory
-- `POST /replenishment/run` - Run agent for store-item
-- `GET /orders/pending` - Pending orders
-- `POST /orders/{id}/approve` - Approve order
-- `POST /explain/stockouts` - Explain chronic stockouts
-- `GET /metrics/prometheus` - Prometheus metrics
-
-## Free Live Deployment
-
-[Live Render app: https://stockflow-zfob.onrender.com](https://stockflow-zfob.onrender.com)
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pavanbobba09/StockFlow)
-
-The project is deployed on Render's free plan. The repo also includes a `render.yaml` Blueprint for repeatable no-cost deployment:
-
-- Docker web service on Render's free web-service plan.
-- Render Postgres on the free database plan.
-- PostGIS is enabled by `data/schema/init.sql`.
-- `scripts/bootstrap_hosted.py` creates schema and synthetic seed data on first boot.
-- The app reads Render's `PORT` environment variable automatically.
-
-Deploy path:
-
-1. Push this repo to GitHub.
-2. In Render, choose **New > Blueprint**.
-3. Connect `pavanbobba09/StockFlow`.
-4. Select the free web service and free Postgres resources from `render.yaml`.
-5. Leave `ANTHROPIC_API_KEY` empty unless you want optional LLM explanations.
-6. Open the generated `https://...onrender.com` URL after deploy.
-
-The live app may cold-start on the free plan. That is acceptable for a portfolio
-demo; the first request can take longer, then the simulator runs normally.
-
-## Project Structure
-
-```
-StockFlow/
-├── forecasting/         # Time-series models
-├── agents/              # LangGraph agents
-├── api/                 # FastAPI endpoints
-├── data/                # Schema + synthetic data gen
-├── evals/               # Backtest harness, metrics
-├── tests/               # Tests
-├── scripts/             # Hosted bootstrap scripts
-├── frontend/            # React/Vite/TypeScript operations room
-├── render.yaml          # Free Render Blueprint
-├── ARCHITECTURE.md      # Architecture docs
-├── WORK_BREAKDOWN.md    # Phased plan
-└── RULES.md             # Coding rules
+```text
+http://127.0.0.1:8000
 ```
 
-## Recruiter Demo Flow
+## Running with Docker
 
-1. Open [https://stockflow-zfob.onrender.com](https://stockflow-zfob.onrender.com) or `http://localhost:8000` for local development.
-2. Pick a scenario such as **Weekend Rush** or **Expiry Rescue**.
-3. Click **Run Day** or **Auto Play**.
-4. Watch restaurant towers change color as inventory risk changes.
-5. Review the agent timeline to see each agent's reasoning.
-6. Approve or reject order, transfer, markdown, and donation decisions.
-7. Compare **Without Agents vs With Agents** metrics.
+```bash
+docker compose up --build
+```
 
-## Development Phases
+Then open:
 
-- **Phase 0**: ✅ Setup - containers, structure, schema
-- **Phase 1**: ✅ Data foundation - synthetic data generator
-- **Phase 2**: ✅ Forecasting + eval harness
-- **Phase 3**: ✅ Replenishment agent
-- **Phase 4**: ✅ Transfer/waste agent
-- **Phase 5**: ✅ API + observability
-- **Phase 6**: ✅ Geo map frontend
-- **Phase 7**: ✅ Live free deployment on Render
+```text
+http://127.0.0.1:8000
+```
 
-See [WORK_BREAKDOWN.md](WORK_BREAKDOWN.md) for details.
+## Environment Variables
 
-## Key Principles
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | PostgreSQL/PostGIS connection string. |
+| `DEMO_MODE` | No | Enables demo-friendly behavior. |
+| `SIMULATION_SPEED_MS` | No | Controls autoplay tick speed. |
+| `LIVE_SIGNALS_ENABLED` | No | Enables optional live signal enrichment. |
+| `LIVE_SIGNAL_CACHE_SECONDS` | No | Controls live signal cache duration. |
+| `LIVE_API_TIMEOUT_SECONDS` | No | Timeout for live signal APIs. |
+| `ANTHROPIC_API_KEY` or other LLM key | No | Optional. Used only for richer natural-language explanations if configured. |
 
-- Evals first. Backtest harness proves it works.
-- Small composable agents. One job each.
-- Idempotent tool calls. No double-orders on retries.
-- Thin end-to-end slice first, then widen.
-- Human in the loop on mutations. Agents propose, humans approve.
+The core simulator and agents are designed to work without an LLM API key.
 
-## License
+## Testing
 
-MIT
+Run backend and MCP tests:
+
+```bash
+venv/bin/python -m pytest
+```
+
+Build the frontend:
+
+```bash
+npm run build --prefix frontend
+```
+
+Recommended full check before pushing:
+
+```bash
+npm run build --prefix frontend
+venv/bin/python -m pytest
+git diff --check
+```
+
+## Resume Summary
+
+Strong resume version:
+
+- Built StockFlow, a LangGraph-based multi-agent supply chain simulator where specialized agents forecast demand, detect stockout and expiry risk, recommend replenishment or store-to-store transfers, and produce auditable human-approval decisions.
+- Added an MCP integration that exposes StockFlow tools and context to external AI assistants, allowing other clients to inspect live supply chain state, run simulations, review reasoning traces, and approve or reject agent recommendations.
+
+## Project Status
+
+StockFlow currently has a complete end-to-end portfolio slice:
+
+- Multi-agent workflow
+- Simulation engine
+- Human approval loop
+- Durable decision/event state
+- MCP adapter
+- React operations dashboard
+- Docker/Render deployment path
+- Automated backend/MCP tests
+- Production frontend build
+
+Future improvements could include real POS integrations, richer forecasting models, role-based access control, alert notifications, and more advanced route optimization.
