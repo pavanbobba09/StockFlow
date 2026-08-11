@@ -36,15 +36,13 @@ export function App() {
     queryFn: stockflowApi.getState,
     refetchOnWindowFocus: false,
   });
-
   const state = stateQuery.data;
 
   useEffect(() => {
     if (state?.scenario?.name) {
       setActiveScenario(state.scenario.name);
-      setAutoplaying(Boolean(state.autoplay));
     }
-  }, [setActiveScenario, setAutoplaying, state?.autoplay, state?.scenario?.name]);
+  }, [setActiveScenario, state?.scenario?.name]);
 
   const updateState = (nextState: DemoState) => {
     setErrorMessage(null);
@@ -56,7 +54,6 @@ export function App() {
     onSuccess: updateState,
     onError: (error: Error) => setErrorMessage(error.message),
   });
-
   const resetMutation = useMutation({
     mutationFn: stockflowApi.reset,
     onSuccess: (nextState) => {
@@ -65,13 +62,11 @@ export function App() {
     },
     onError: (error: Error) => setErrorMessage(error.message),
   });
-
   const scenarioMutation = useMutation({
     mutationFn: stockflowApi.setScenario,
     onSuccess: updateState,
     onError: (error: Error) => setErrorMessage(error.message),
   });
-
   const decisionMutation = useMutation({
     mutationFn: ({ id, action }: { id: number; action: "approve" | "reject" }) => stockflowApi.decide(id, action),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: stateQueryKey }),
@@ -86,18 +81,12 @@ export function App() {
     decisionMutation.isPending;
 
   useEffect(() => {
-    document.body.classList.toggle("busy", busy);
-  }, [busy]);
-
-  useEffect(() => {
     if (!window.EventSource) {
       setLiveStreamStatus("unsupported");
       return;
     }
-
     const source = new EventSource("/live/events");
     setLiveStreamStatus("connecting");
-
     source.addEventListener("open", () => setLiveStreamStatus("live"));
     source.addEventListener("error", () => setLiveStreamStatus("reconnecting"));
     source.addEventListener("stockflow-state", (event) => {
@@ -112,7 +101,6 @@ export function App() {
         console.error("Bad live event payload:", error);
       }
     });
-
     return () => source.close();
   }, [queryClient, setLiveStreamStatus]);
 
@@ -135,110 +123,118 @@ export function App() {
     if (isAutoplaying) {
       stopLocalAutoplay();
       await stockflowApi.stopAutoplay();
-      await queryClient.invalidateQueries({ queryKey: stateQueryKey });
-      return;
+    } else {
+      await stockflowApi.startAutoplay();
+      setAutoplaying(true);
     }
-    await stockflowApi.startAutoplay();
-    setAutoplaying(true);
     await queryClient.invalidateQueries({ queryKey: stateQueryKey });
   };
 
   if (!state) {
     return (
       <main className="loading-shell">
-        <div className="empty-state">{stateQuery.isError ? String(stateQuery.error.message) : "Loading StockFlow..."}</div>
+        <div className="loading-card">
+          <span className="loading-mark">SF</span>
+          <strong>{stateQuery.isError ? "StockFlow is unavailable" : "Loading StockFlow"}</strong>
+          <p>{stateQuery.isError ? String(stateQuery.error.message) : "Connecting to the inventory network…"}</p>
+        </div>
       </main>
     );
   }
 
+  const criticalStores = state.restaurants.filter((store) => store.status === "critical").length;
+
   return (
-    <div className="app-shell">
+    <div className="app-shell" aria-busy={busy}>
       <header className="topbar">
-        <div>
-          <p className="eyebrow">AI-agent operations room</p>
-          <h1>StockFlow</h1>
-          <p className="subtitle">Multi-Agent Franchise Supply Chain Simulator</p>
+        <div className="brand-lockup">
+          <span className="brand-mark">SF</span>
+          <div>
+            <h1>StockFlow</h1>
+            <p>Inventory decisions for every location</p>
+          </div>
         </div>
-        <div className="clock-panel">
-          <span>{state.scenario.label}</span>
+        <div className="system-status">
+          <span className={`status-dot ${liveStreamStatus}`} />
+          <span>{liveStreamStatus === "live" ? "Live data" : liveStreamStatus}</span>
           <strong>Day {state.sim_day}</strong>
           <span>{state.sim_date}</span>
-          <span id="live-stream-status" data-status={liveStreamStatus}>
-            Stream: {liveStreamStatus}
-          </span>
         </div>
       </header>
 
-      <main className="demo-grid">
-        <section className="map-panel">
-          <div className="map-toolbar">
-            <div className="scenario-tabs" aria-label="Simulation scenarios">
-              {scenarios.map((scenario) => (
-                <button
-                  className={`scenario-btn ${activeScenario === scenario.name ? "active" : ""}`}
-                  key={scenario.name}
-                  onClick={() => scenarioMutation.mutate(scenario.name)}
-                >
-                  {scenario.label}
-                </button>
-              ))}
+      <section className="control-bar" aria-label="Simulation controls">
+        <div className="scenario-control">
+          <label htmlFor="scenario">Scenario</label>
+          <select
+            id="scenario"
+            value={activeScenario}
+            onChange={(event) => scenarioMutation.mutate(event.target.value as ScenarioName)}
+          >
+            {scenarios.map((scenario) => (
+              <option value={scenario.name} key={scenario.name}>
+                {scenario.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="scenario-summary">
+          <strong>{state.scenario.label}</strong>
+          <span>{state.scenario.description}</span>
+        </div>
+        <div className="control-actions">
+          <button className="button secondary" onClick={toggleAutoplay} disabled={busy}>
+            {isAutoplaying ? "Pause" : "Auto play"}
+          </button>
+          <button className="button secondary" onClick={() => resetMutation.mutate()} disabled={busy}>
+            Reset
+          </button>
+          <button className="button primary" onClick={() => runDayMutation.mutate()} disabled={busy}>
+            {runDayMutation.isPending ? "Running…" : "Run next day"}
+          </button>
+        </div>
+      </section>
+
+      {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+      <MetricBoard metrics={state.metrics} />
+
+      <main className="primary-grid">
+        <section className="map-panel card">
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">Network overview</span>
+              <h2>Where attention is needed</h2>
             </div>
-            <div className="control-row">
-              <button className="control primary" onClick={() => runDayMutation.mutate()}>
-                Run Day
-              </button>
-              <button className="control" onClick={toggleAutoplay}>
-                {isAutoplaying ? "Pause" : "Auto Play"}
-              </button>
-              <button className="control ghost" onClick={() => resetMutation.mutate()}>
-                Reset
-              </button>
-            </div>
+            <span className={`attention-badge ${criticalStores ? "warning" : "healthy"}`}>
+              {criticalStores ? `${criticalStores} locations at risk` : "All locations stable"}
+            </span>
           </div>
           <OperationsMap state={state} />
-          <div className="legend-bar">
-            <span>
-              <i className="legend healthy" />
-              Healthy
-            </span>
-            <span>
-              <i className="legend low" />
-              Low stock
-            </span>
-            <span>
-              <i className="legend critical" />
-              Stockout risk
-            </span>
-            <span>
-              <i className="legend expiry" />
-              Expiry risk
-            </span>
-            <span>
-              <i className="legend warehouse" />
-              Warehouse
-            </span>
+          <div className="legend-bar" aria-label="Map legend">
+            <span><i className="legend healthy" />Healthy</span>
+            <span><i className="legend low" />Low stock</span>
+            <span><i className="legend critical" />Stockout risk</span>
+            <span><i className="legend expiry" />Expiry risk</span>
+            <span><i className="legend warehouse" />Warehouse</span>
           </div>
         </section>
 
-        <aside className="side-panel">
-          <MetricBoard metrics={state.metrics} />
-          <ComparisonPanel metrics={state.metrics} />
-          <LiveSignalPanel signals={state.live_signals} />
-          <AgentPanel agents={state.agents} />
+        <aside className="insight-column">
           <DecisionPanel
             decisions={state.pending_decisions}
             pendingCount={state.metrics.pending_decisions}
             onDecision={(id, action) => decisionMutation.mutate({ id, action })}
           />
         </aside>
-
-        <TimelinePanel
-          events={state.events}
-          traces={state.reasoning_traces}
-          fillRate={state.metrics.fill_rate}
-          error={errorMessage}
-        />
       </main>
+
+      <section className="secondary-grid" aria-label="Decision context">
+        <ComparisonPanel metrics={state.metrics} />
+        <LiveSignalPanel signals={state.live_signals} />
+      </section>
+
+      <AgentPanel agents={state.agents} />
+      <TimelinePanel events={state.events} traces={state.reasoning_traces} fillRate={state.metrics.fill_rate} />
     </div>
   );
 }

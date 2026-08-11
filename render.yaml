@@ -20,6 +20,10 @@ services:
         value: "1800"
       - key: LIVE_API_TIMEOUT_SECONDS
         value: "3.0"
+      - key: LIVE_STREAM_INTERVAL_SECONDS
+        value: "4"
+      - key: DEMO_WRITE_LIMIT_PER_MINUTE
+        value: "40"
       - key: NWS_USER_AGENT
         value: "StockFlow/1.0 (portfolio-demo@example.com)"
       - key: ANTHROPIC_API_KEY
@@ -27,7 +31,9 @@ services:
 
 databases:
   - name: stockflow-db
-    plan: free
+    plan: basic-256mb
+    diskSizeGB: 1
     postgresMajorVersion: "16"
     databaseName: stockflow
     user: stockflow
+    ipAllowList: []

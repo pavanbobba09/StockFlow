@@ -1,73 +1,87 @@
 import type { Agent, AgentEvent, Decision, LiveSignals, Metrics, ReasoningTrace } from "../types";
 import { currency, number } from "../utils";
 
-type MetricBoardProps = {
-  metrics: Metrics;
-};
+type MetricBoardProps = { metrics: Metrics };
 
 export function MetricBoard({ metrics }: MetricBoardProps) {
+  const cards = [
+    {
+      label: "Fill rate",
+      value: `${Math.round(metrics.fill_rate * 100)}%`,
+      detail: "Customer demand fulfilled",
+      tone: metrics.fill_rate >= 0.9 ? "positive" : metrics.fill_rate >= 0.75 ? "neutral" : "warning",
+    },
+    {
+      label: "Needs approval",
+      value: number(metrics.pending_decisions),
+      detail: "Current agent recommendations",
+      tone: metrics.pending_decisions ? "neutral" : "positive",
+    },
+    {
+      label: "Stockouts avoided",
+      value: number(metrics.stockouts_avoided),
+      detail: "Units protected by approved actions",
+      tone: "positive",
+    },
+    {
+      label: "Waste prevented",
+      value: `${number(metrics.waste_reduced)} units`,
+      detail: `${currency(metrics.estimated_profit_saved)} estimated value saved`,
+      tone: "positive",
+    },
+  ];
+
   return (
-    <section className="metric-board">
-      <div>
-        <span className="metric-label">Stockouts avoided</span>
-        <strong>{number(metrics.stockouts_avoided)}</strong>
-      </div>
-      <div>
-        <span className="metric-label">Waste reduced</span>
-        <strong>{number(metrics.waste_reduced)} units</strong>
-      </div>
-      <div>
-        <span className="metric-label">Transferred</span>
-        <strong>{number(metrics.units_transferred)} units</strong>
-      </div>
-      <div>
-        <span className="metric-label">Profit saved</span>
-        <strong>{currency(metrics.estimated_profit_saved)}</strong>
-      </div>
+    <section className="metric-board" aria-label="Network health summary">
+      {cards.map((card) => (
+        <article className={`metric-card ${card.tone}`} key={card.label}>
+          <span>{card.label}</span>
+          <strong>{card.value}</strong>
+          <p>{card.detail}</p>
+        </article>
+      ))}
     </section>
   );
 }
 
 export function ComparisonPanel({ metrics }: MetricBoardProps) {
+  const stockoutImprovement = Math.max(
+    0,
+    metrics.without_agents.projected_stockouts - metrics.with_agents.stockouts,
+  );
+  const wasteImprovement = Math.max(0, metrics.without_agents.projected_waste - metrics.with_agents.waste);
+
   return (
-    <section className="comparison-panel">
-      <h2>Without Agents vs With Agents</h2>
-      <div className="compare-grid">
+    <section className="card comparison-panel">
+      <div className="section-heading compact">
         <div>
-          <span>Projected stockouts</span>
-          <strong>{number(metrics.without_agents.projected_stockouts)}</strong>
+          <span className="section-kicker">Measured impact</span>
+          <h2>With agents vs. baseline</h2>
         </div>
-        <div>
-          <span>Current stockouts</span>
-          <strong>{number(metrics.with_agents.stockouts)}</strong>
-        </div>
-        <div>
-          <span>Projected waste</span>
-          <strong>{number(metrics.without_agents.projected_waste)} units</strong>
-        </div>
-        <div>
-          <span>Current waste</span>
-          <strong>{number(metrics.with_agents.waste)} units</strong>
-        </div>
+      </div>
+      <div className="comparison-row">
+        <div><span>Stockouts</span><strong>{number(metrics.with_agents.stockouts)}</strong></div>
+        <span className="comparison-baseline">Baseline {number(metrics.without_agents.projected_stockouts)}</span>
+        <span className="comparison-delta">{number(stockoutImprovement)} avoided</span>
+      </div>
+      <div className="comparison-row">
+        <div><span>Waste</span><strong>{number(metrics.with_agents.waste)} units</strong></div>
+        <span className="comparison-baseline">Baseline {number(metrics.without_agents.projected_waste)}</span>
+        <span className="comparison-delta">{number(wasteImprovement)} saved</span>
       </div>
     </section>
   );
 }
 
 export function LiveSignalPanel({ signals }: { signals: LiveSignals }) {
-  const reasons = signals.reasons?.length ? signals.reasons : ["No live signals loaded yet."];
-
+  const reason = signals.reasons?.[0] || "No outside demand signal is affecting the forecast.";
   return (
-    <section className="live-signal-panel">
-      <div className="panel-title-row">
-        <h2>Free Live Signals</h2>
-        <span>{signals.status || "unknown"}</span>
-      </div>
-      <strong>{Number(signals.demand_multiplier || 1).toFixed(2)}x demand pressure</strong>
-      <div className="live-signal-reasons">
-        {reasons.slice(0, 3).map((reason) => (
-          <span key={reason}>{reason}</span>
-        ))}
+    <section className="card signal-panel">
+      <div className="signal-icon" aria-hidden="true">↗</div>
+      <div>
+        <span className="section-kicker">Live demand signal</span>
+        <strong>{Number(signals.demand_multiplier || 1).toFixed(2)}× pressure</strong>
+        <p>{reason}</p>
       </div>
     </section>
   );
@@ -75,16 +89,21 @@ export function LiveSignalPanel({ signals }: { signals: LiveSignals }) {
 
 export function AgentPanel({ agents }: { agents: Agent[] }) {
   return (
-    <section className="agent-panel">
-      <h2>Agent Team</h2>
-      <div className="agent-roster">
-        {agents.map((agent) => (
-          <article className="agent-card" key={agent.name}>
-            <div className="agent-pulse" />
+    <section className="card agent-panel">
+      <div className="section-heading compact">
+        <div>
+          <span className="section-kicker">Decision workflow</span>
+          <h2>How StockFlow reaches a recommendation</h2>
+        </div>
+        <span className="plain-status"><i /> {agents.length} focused agents</span>
+      </div>
+      <div className="agent-flow">
+        {agents.map((agent, index) => (
+          <article className="agent-step" key={agent.name}>
+            <span className="step-number">{index + 1}</span>
             <div>
-              <h3>{agent.name}</h3>
+              <h3>{agent.name.replace(" Agent", "")}</h3>
               <p>{agent.role}</p>
-              <span>{agent.status}</span>
             </div>
           </article>
         ))}
@@ -100,44 +119,47 @@ type DecisionPanelProps = {
 };
 
 export function DecisionPanel({ decisions, pendingCount, onDecision }: DecisionPanelProps) {
+  const visibleDecisions = decisions.slice(0, 3);
   return (
-    <section className="decision-panel">
-      <div className="panel-title-row">
-        <h2>Manager Decisions</h2>
-        <span>{pendingCount} pending</span>
+    <section className="card decision-panel">
+      <div className="section-heading compact">
+        <div>
+          <span className="section-kicker">Human approval</span>
+          <h2>Recommended actions</h2>
+        </div>
+        <span className="count-badge">{pendingCount}</span>
       </div>
+      <p className="section-intro">Agents prepare the action. A manager makes the final decision.</p>
       <div className="decision-list">
-        {!decisions.length ? (
-          <div className="empty-state">No pending decisions. Run a day or load a scenario.</div>
+        {!visibleDecisions.length ? (
+          <div className="empty-state">
+            <strong>No decisions waiting</strong>
+            <span>Run the next day to evaluate the network.</span>
+          </div>
         ) : (
-          decisions.map((decision) => {
-            const target = decision.target_store_name ? ` -> ${decision.target_store_name}` : "";
-            return (
-              <article className={`decision-card ${decision.decision_type}`} key={decision.id}>
-                <div className="decision-head">
-                  <span>{decision.decision_type}</span>
-                  <strong>{number(decision.quantity)} units</strong>
-                </div>
-                <h3>{decision.item_name || `Item ${decision.item_id}`}</h3>
-                <p className="decision-store">
-                  {decision.store_name || `Store ${decision.store_id}`}
-                  {target}
-                </p>
-                <p>{decision.reason}</p>
-                <p className="impact">{decision.expected_impact}</p>
-                <div className="decision-actions">
-                  <button className="approve" onClick={() => onDecision(decision.id, "approve")}>
-                    Approve
-                  </button>
-                  <button className="reject" onClick={() => onDecision(decision.id, "reject")}>
-                    Reject
-                  </button>
-                </div>
-              </article>
-            );
-          })
+          visibleDecisions.map((decision) => (
+            <article className="decision-card" key={decision.id}>
+              <div className="decision-summary">
+                <span className={`decision-type ${decision.decision_type}`}>{labelForDecision(decision.decision_type)}</span>
+                <strong>{number(decision.quantity)} units</strong>
+              </div>
+              <h3>{decision.item_name || `Item ${decision.item_id}`}</h3>
+              <p className="decision-location">
+                {decision.store_name || `Store ${decision.store_id}`}
+                {decision.target_store_name ? ` → ${decision.target_store_name}` : ""}
+              </p>
+              <p className="decision-reason">{decision.reason}</p>
+              <div className="decision-actions">
+                <button className="approve" onClick={() => onDecision(decision.id, "approve")}>Approve</button>
+                <button className="reject" onClick={() => onDecision(decision.id, "reject")}>Reject</button>
+              </div>
+            </article>
+          ))
         )}
       </div>
+      {pendingCount > visibleDecisions.length ? (
+        <p className="queue-note">Showing the 3 newest of {pendingCount} recommendations.</p>
+      ) : null}
     </section>
   );
 }
@@ -146,81 +168,57 @@ export function TimelinePanel({
   events,
   traces,
   fillRate,
-  error,
 }: {
   events: AgentEvent[];
   traces: ReasoningTrace[];
   fillRate: number;
-  error?: string | null;
 }) {
-  const traceCards = traces.slice(0, 10).map((trace) => ({
-    key: `trace-${trace.id}`,
-    kind: "trace",
-    severity: "trace",
-    agentName: trace.agent_name,
-    label: `tool: ${trace.tool_name}`,
-    message: `${trace.observation} Decision: ${trace.decision}`,
-    input: trace.input_summary,
-  }));
-  const eventCards = events.slice(0, 14).map((event) => ({
-    key: `event-${event.id}`,
-    kind: "event",
-    severity: event.severity,
-    agentName: event.agent_name,
-    label: event.event_type.replaceAll("_", " "),
-    message: event.message,
-    input: "",
-  }));
-  const cards = [...traceCards, ...eventCards].slice(0, 20);
+  const activity = [
+    ...events.slice(0, 5).map((event) => ({
+      key: `event-${event.id}`,
+      agent: event.agent_name,
+      label: event.event_type.replaceAll("_", " "),
+      message: event.message,
+      severity: event.severity,
+    })),
+    ...traces.slice(0, 3).map((trace) => ({
+      key: `trace-${trace.id}`,
+      agent: trace.agent_name,
+      label: trace.tool_name.replaceAll("_", " "),
+      message: trace.observation,
+      severity: "trace",
+    })),
+  ];
 
   return (
-    <section className="timeline-panel">
-      <div className="panel-title-row">
-        <h2>LangGraph Agent Timeline + Tool Traces</h2>
-        <span>Fill rate {Math.round(fillRate * 100)}%</span>
+    <details className="card activity-panel">
+      <summary>
+        <div>
+          <span className="section-kicker">Audit trail</span>
+          <strong>Agent activity and reasoning</strong>
+        </div>
+        <span>{activity.length} recent events · {Math.round(fillRate * 100)}% fill rate</span>
+      </summary>
+      <div className="activity-list">
+        {activity.map((item) => (
+          <article className="activity-item" key={item.key}>
+            <i className={item.severity} />
+            <div>
+              <div><strong>{item.agent}</strong><span>{item.label}</span></div>
+              <p>{item.message}</p>
+            </div>
+          </article>
+        ))}
       </div>
-      <div className="event-feed">
-        {error ? <EventCard severity="critical" agentName="Demo Error" label="request failed" message={error} /> : null}
-        {!cards.length && !error ? (
-          <div className="empty-state">LangGraph tool traces and agent events appear here as the simulation runs.</div>
-        ) : (
-          cards.map((card) => (
-            <EventCard
-              key={card.key}
-              severity={card.severity}
-              agentName={card.agentName}
-              label={card.label}
-              message={card.message}
-              input={card.input}
-            />
-          ))
-        )}
-      </div>
-    </section>
+    </details>
   );
 }
 
-function EventCard({
-  severity,
-  agentName,
-  label,
-  message,
-  input,
-}: {
-  severity: string;
-  agentName: string;
-  label: string;
-  message: string;
-  input?: string;
-}) {
-  return (
-    <article className={`event-card ${severity}`}>
-      <div>
-        <strong>{agentName}</strong>
-        <span>{label}</span>
-      </div>
-      {input ? <p className="trace-input">{input}</p> : null}
-      <p>{message}</p>
-    </article>
-  );
+function labelForDecision(type: Decision["decision_type"]): string {
+  return {
+    order: "Order",
+    transfer: "Transfer",
+    markdown: "Markdown",
+    donation: "Donate",
+  }[type];
 }
