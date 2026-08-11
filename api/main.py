@@ -16,7 +16,13 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict, deque
 import json
+import logging
+import os
+import secrets
+import threading
+import time
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -50,6 +56,13 @@ from agents.demo_simulator import (
 from agents.live_signals import get_live_signal_summary
 from integrations.mcp_server import handle_mcp_message
 
+
+logger = logging.getLogger(__name__)
+
+
+def _cors_origins() -> list[str]:
+    return [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+
 app = FastAPI(
     title="StockFlow API",
     description="Multi-agent inventory management for food chains",
@@ -59,11 +72,47 @@ app = FastAPI(
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_write_requests: dict[str, deque[float]] = defaultdict(deque)
+_write_rate_lock = threading.Lock()
+
+
+@app.middleware("http")
+async def protect_and_cache(request: Request, call_next):
+    """Throttle public demo writes and attach baseline browser protections."""
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        configured_token = os.getenv("DEMO_WRITE_TOKEN", "")
+        supplied_token = request.headers.get("X-StockFlow-Token", "")
+        if configured_token and not secrets.compare_digest(configured_token, supplied_token):
+            return JSONResponse(status_code=401, content={"detail": "Write access token required"})
+
+        limit = max(1, int(os.getenv("DEMO_WRITE_LIMIT_PER_MINUTE", "40")))
+        client_key = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        with _write_rate_lock:
+            recent = _write_requests[client_key]
+            while recent and recent[0] <= now - 60:
+                recent.popleft()
+            if len(recent) >= limit:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many demo changes; retry in a minute"},
+                    headers={"Retry-After": "60"},
+                )
+            recent.append(now)
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Frame-Options"] = "DENY"
+    if request.url.path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
 
 # Mount static files
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -184,7 +233,8 @@ def health():
         check_connection()
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database error: {e}")
+        logger.warning("Database health check failed: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
 
 # ---------------------------------------------------------------------------
@@ -341,23 +391,28 @@ async def live_events(request: Request):
     """
 
     async def event_generator():
-        db = SessionLocal()
         last_signature = None
+        setup_db = SessionLocal()
         try:
-            ensure_demo_schema(db)
-            while True:
-                if await request.is_disconnected():
-                    break
-                payload = _live_event_payload(db)
-                signature = json.dumps(payload["cursors"], sort_keys=True)
-                if signature != last_signature:
-                    last_signature = signature
-                    yield _sse_event("stockflow-state", payload, event_id=str(payload["sequence"]))
-                else:
-                    yield ": heartbeat\n\n"
-                await asyncio.sleep(2)
+            ensure_demo_schema(setup_db)
         finally:
-            db.close()
+            setup_db.close()
+
+        while True:
+            if await request.is_disconnected():
+                break
+            db = SessionLocal()
+            try:
+                payload = _live_event_payload(db)
+            finally:
+                db.close()
+            signature = json.dumps(payload["cursors"], sort_keys=True)
+            if signature != last_signature:
+                last_signature = signature
+                yield _sse_event("stockflow-state", payload, event_id=str(payload["sequence"]))
+            else:
+                yield ": heartbeat\n\n"
+            await asyncio.sleep(float(os.getenv("LIVE_STREAM_INTERVAL_SECONDS", "4")))
 
     return StreamingResponse(
         event_generator(),

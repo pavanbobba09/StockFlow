@@ -99,3 +99,31 @@ def test_approval_is_idempotent_for_pending_demo_decision():
         assert second["idempotent"] is True
     finally:
         db.close()
+
+
+@pytest.mark.skipif(
+    os.getenv("RUN_STOCKFLOW_DB_TESTS") != "1",
+    reason="Set RUN_STOCKFLOW_DB_TESTS=1 to run Postgres-backed demo simulator tests.",
+)
+def test_repeated_ticks_keep_one_pending_proposal_per_action():
+    from data.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        sim.reset_demo(db)
+        sim.run_demo_tick(db)
+        sim.run_demo_tick(db)
+        decisions = sim.get_pending_decisions(db, limit=100)
+        logical_keys = {
+            (
+                decision["decision_type"],
+                decision["store_id"],
+                decision["target_store_id"],
+                decision["item_id"],
+            )
+            for decision in decisions
+        }
+
+        assert len(decisions) == len(logical_keys)
+    finally:
+        db.close()

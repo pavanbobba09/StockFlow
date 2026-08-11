@@ -208,6 +208,7 @@ def ensure_demo_schema(db: Session) -> None:
         _set_state(db, "autoplay", "false")
     if _get_state(db, "scenario", None) is None:
         _set_state(db, "scenario", DEFAULT_SCENARIO)
+    _collapse_pending_decisions(db)
     db.commit()
 
 
@@ -380,8 +381,8 @@ def get_demo_state(db: Session) -> dict[str, Any]:
         "agents": _agent_roster(),
         "restaurants": _restaurants(db),
         "warehouses": _warehouses(db),
-        "events": get_agent_events(db, limit=40),
-        "reasoning_traces": get_reasoning_traces(db, limit=40),
+        "events": get_agent_events(db, limit=18),
+        "reasoning_traces": get_reasoning_traces(db, limit=12),
         "pending_decisions": get_pending_decisions(db),
         "routes": _routes(db),
         "metrics": demo_impact_metrics(db),
@@ -447,7 +448,7 @@ def get_reasoning_traces(db: Session, limit: int = 50) -> list[dict[str, Any]]:
     ]
 
 
-def get_pending_decisions(db: Session) -> list[dict[str, Any]]:
+def get_pending_decisions(db: Session, limit: int = 12) -> list[dict[str, Any]]:
     ensure_demo_schema(db)
     rows = db.execute(
         text("""
@@ -462,7 +463,9 @@ def get_pending_decisions(db: Session) -> list[dict[str, Any]]:
             LEFT JOIN items i ON i.id = d.item_id
             WHERE d.status = 'pending'
             ORDER BY d.created_at DESC, d.id DESC
-        """)
+            LIMIT :limit
+        """),
+        {"limit": limit},
     ).fetchall()
     return [_decision_row(r) for r in rows]
 
@@ -1019,6 +1022,49 @@ def _create_decision(
     ).scalar()
     if exists:
         return False
+    pending_id = db.execute(
+        text("""
+            SELECT id
+            FROM agent_decisions
+            WHERE status = 'pending'
+              AND decision_type = :decision_type
+              AND store_id = :store_id
+              AND target_store_id IS NOT DISTINCT FROM :target_store_id
+              AND item_id = :item_id
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+        """),
+        {
+            "decision_type": decision_type,
+            "store_id": store_id,
+            "target_store_id": target_store_id,
+            "item_id": item_id,
+        },
+    ).scalar()
+    if pending_id:
+        db.execute(
+            text("""
+                UPDATE agent_decisions
+                SET tick_id = :tick_id,
+                    agent_name = :agent_name,
+                    quantity = :quantity,
+                    idempotency_key = :idempotency_key,
+                    reason = :reason,
+                    expected_impact = :expected_impact,
+                    created_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+            """),
+            {
+                "id": pending_id,
+                "tick_id": tick_id,
+                "agent_name": agent_name,
+                "quantity": int(quantity),
+                "idempotency_key": idempotency_key,
+                "reason": reason,
+                "expected_impact": expected_impact,
+            },
+        )
+        return True
     db.execute(
         text("""
             INSERT INTO agent_decisions
@@ -1042,6 +1088,29 @@ def _create_decision(
         },
     )
     return True
+
+
+def _collapse_pending_decisions(db: Session) -> None:
+    """Keep only the newest unresolved proposal for each operational action."""
+    db.execute(
+        text("""
+            DELETE FROM agent_decisions
+            WHERE id IN (
+                SELECT id
+                FROM (
+                    SELECT
+                        id,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY decision_type, store_id, target_store_id, item_id
+                            ORDER BY created_at DESC, id DESC
+                        ) AS proposal_rank
+                    FROM agent_decisions
+                    WHERE status = 'pending'
+                ) ranked
+                WHERE proposal_rank > 1
+            )
+        """)
+    )
 
 
 def _emit_manager_summary(db: Session, tick_id: int) -> None:
